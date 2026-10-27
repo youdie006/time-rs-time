@@ -993,3 +993,54 @@ where
 {
     assert_de_tokens::<T>(&value, tokens);
 }
+
+/// A deserializer for `Some(str)` that, like bincode and postcard, does not support
+/// `deserialize_any`.
+struct NonSelfDescribing<'a>(&'a str);
+
+impl<'de> serde::Deserializer<'de> for NonSelfDescribing<'de> {
+    type Error = serde::de::value::Error;
+
+    fn deserialize_any<V: serde::de::Visitor<'de>>(self, _: V) -> Result<V::Value, Self::Error> {
+        Err(serde::de::Error::custom("deserialize_any is not supported"))
+    }
+
+    fn deserialize_option<V: serde::de::Visitor<'de>>(
+        self,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        visitor.visit_some(self)
+    }
+
+    fn deserialize_str<V: serde::de::Visitor<'de>>(
+        self,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
+        visitor.visit_borrowed_str(self.0)
+    }
+
+    serde::forward_to_deserialize_any! {
+        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char string bytes byte_buf unit
+        unit_struct newtype_struct seq tuple tuple_struct map struct enum identifier ignored_any
+    }
+}
+
+type OptionDeserializer =
+    fn(NonSelfDescribing<'static>) -> Result<Option<OffsetDateTime>, serde::de::value::Error>;
+
+#[rstest]
+#[case(time::serde::rfc2822::option::deserialize, "Sat, 01 Jan 2000 00:00:00 +0000")]
+#[case(time::serde::rfc3339::option::deserialize, "2000-01-01T00:00:00Z")]
+#[case(
+    time::serde::iso8601::option::deserialize,
+    "+002000-01-01T00:00:00.000000000Z"
+)]
+fn well_known_option_non_self_describing(
+    #[case] deserialize: OptionDeserializer,
+    #[case] value: &'static str,
+) {
+    assert_eq!(
+        deserialize(NonSelfDescribing(value)),
+        Ok(Some(datetime!(2000-01-01 00:00:00 UTC)))
+    );
+}

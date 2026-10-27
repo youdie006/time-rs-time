@@ -470,7 +470,7 @@ macro_rules! well_known {
                 D: Deserializer<'a>,
             {
                 deserializer
-                    .deserialize_any(Visitor::<$($ty)+>(PhantomData))
+                    .deserialize_str(Visitor::<$($ty)+>(PhantomData))
                     .map(Some)
             }
 
